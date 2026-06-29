@@ -146,7 +146,7 @@ export interface JourneyResult {
   candidates: RouteCandidate[];
   selected: RouteCandidate | null;
   fallbackReason?: string; // shown when every transit candidate was discarded
-  busNudge?: boolean; // suggest enabling bus when fallback triggered and bus is OFF
+  busNudge?: boolean; // suggest enabling bus (OFF) when transit fell back OR slider routes lack variety
   generatedAt: number; // Unix ms
 }
 

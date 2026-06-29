@@ -318,12 +318,16 @@ function StatCell({
 
 // ─── Fallback message ─────────────────────────────────────────────────────────
 
+/** Shown above the Metrobus nudge when routes are too similar for the slider. */
+const VARIETY_NUDGE_MESSAGE =
+  "These routes are all pretty similar, so the Bike Preference slider won't change much.";
+
 export function FallbackMessage({
   reason,
   busNudge,
   onEnableBus,
 }: {
-  reason: string;
+  reason?: string;
   busNudge?: boolean;
   onEnableBus?: () => void;
 }) {
@@ -331,7 +335,7 @@ export function FallbackMessage({
     <div className="flex gap-2.5 items-start bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm text-amber-800">
       <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-500" />
       <div>
-        <p>{reason}</p>
+        <p>{reason ?? VARIETY_NUDGE_MESSAGE}</p>
         {busNudge && onEnableBus && (
           <button
             onClick={onEnableBus}
