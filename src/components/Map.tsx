@@ -36,7 +36,14 @@ export default function Map({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const originRef = useRef(origin);
+  const destinationRef = useRef(destination);
   const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Keep refs in sync so the route effect can read current values
+  // without them appearing in the dep array (whose size must stay constant).
+  useEffect(() => { originRef.current = origin; });
+  useEffect(() => { destinationRef.current = destination; });
 
   // Initialize map
   useEffect(() => {
@@ -196,10 +203,10 @@ export default function Map({
     // Clamp to a sane radius around the origin–destination midpoint so that
     // long transit detours (e.g. Blue Line east then Green Line north) don't
     // zoom the map out to show all of DC.
-    const originLng = origin?.lon ?? (minLng + maxLng) / 2;
-    const originLat = origin?.lat ?? (minLat + maxLat) / 2;
-    const destLng   = destination?.lon ?? originLng;
-    const destLat   = destination?.lat ?? originLat;
+    const originLng = originRef.current?.lon ?? (minLng + maxLng) / 2;
+    const originLat = originRef.current?.lat ?? (minLat + maxLat) / 2;
+    const destLng   = destinationRef.current?.lon ?? originLng;
+    const destLat   = destinationRef.current?.lat ?? originLat;
     const midLng = (originLng + destLng) / 2;
     const midLat = (originLat + destLat) / 2;
     // Max allowed distance from midpoint = 1.5× the origin-destination span, min 0.02°
@@ -212,7 +219,7 @@ export default function Map({
     ];
 
     map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 600 });
-  }, [mapLoaded, candidate, origin, destination]);
+  }, [mapLoaded, candidate]);
 
   // Fly to origin when set without a route
   useEffect(() => {
