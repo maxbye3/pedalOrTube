@@ -142,11 +142,8 @@ export default function Map({
 
     if (!candidate) return;
 
-    const bounds: [[number, number], [number, number]] = [
-      [Infinity, Infinity],
-      [-Infinity, -Infinity],
-    ];
-
+    // Collect all route coordinates and compute raw bounds
+    const allCoords: [number, number][] = [];
     candidate.legs.forEach((leg, i) => {
       if (!leg.geometry?.coordinates?.length) return;
       const sourceId = `route-leg-${i}`;
@@ -180,25 +177,42 @@ export default function Map({
         },
       });
 
-      // Expand bounds
       leg.geometry.coordinates.forEach((coord) => {
-        const lng = coord[0];
-        const lat = coord[1];
-        if (lng < bounds[0][0]) bounds[0][0] = lng;
-        if (lat < bounds[0][1]) bounds[0][1] = lat;
-        if (lng > bounds[1][0]) bounds[1][0] = lng;
-        if (lat > bounds[1][1]) bounds[1][1] = lat;
+        allCoords.push([coord[0], coord[1]]);
       });
     });
 
-    // Fit map to route
-    if (
-      bounds[0][0] !== Infinity &&
-      bounds[1][0] !== -Infinity
-    ) {
-      map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 600 });
+    if (allCoords.length === 0) return;
+
+    // Compute raw extents
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const [lng, lat] of allCoords) {
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
     }
-  }, [mapLoaded, candidate]);
+
+    // Clamp to a sane radius around the origin–destination midpoint so that
+    // long transit detours (e.g. Blue Line east then Green Line north) don't
+    // zoom the map out to show all of DC.
+    const originLng = origin?.lon ?? (minLng + maxLng) / 2;
+    const originLat = origin?.lat ?? (minLat + maxLat) / 2;
+    const destLng   = destination?.lon ?? originLng;
+    const destLat   = destination?.lat ?? originLat;
+    const midLng = (originLng + destLng) / 2;
+    const midLat = (originLat + destLat) / 2;
+    // Max allowed distance from midpoint = 1.5× the origin-destination span, min 0.02°
+    const spanLng = Math.max(Math.abs(destLng - originLng), 0.02) * 1.5;
+    const spanLat = Math.max(Math.abs(destLat - originLat), 0.02) * 1.5;
+
+    const bounds: [[number, number], [number, number]] = [
+      [Math.max(minLng, midLng - spanLng), Math.max(minLat, midLat - spanLat)],
+      [Math.min(maxLng, midLng + spanLng), Math.min(maxLat, midLat + spanLat)],
+    ];
+
+    map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 600 });
+  }, [mapLoaded, candidate, origin, destination]);
 
   // Fly to origin when set without a route
   useEffect(() => {
