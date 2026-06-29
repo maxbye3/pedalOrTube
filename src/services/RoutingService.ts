@@ -287,12 +287,13 @@ function interpolateCoord(
 }
 
 /**
- * Generate sweep points along AND perpendicular to the origin→destination line.
- * A ±LATERAL_DEG offset (roughly ±450 m) catches Metro stations that sit off
- * the direct corridor — e.g. Woodley Park or U Street relative to a
- * Foggy Bottom → Columbia Heights trip.
+ * Lateral offsets (degrees) applied perpendicular to the travel direction at
+ * each sweep fraction. Three scales per side covers a corridor roughly
+ * 0–2.7 km either side of the straight line — wide enough to reach stations
+ * like Gallery Place, Mount Vernon Square, or Shaw-Howard that sit well east
+ * of a Foggy Bottom → Columbia Heights straight line.
  */
-const LATERAL_DEG = 0.004;
+const LATERAL_OFFSETS_DEG = [0, 0.009, 0.018, 0.027, -0.009, -0.018, -0.027];
 
 function sweepGrid(
   from: { lat: number; lon: number },
@@ -301,18 +302,19 @@ function sweepGrid(
   const dlat = to.lat - from.lat;
   const dlon = to.lon - from.lon;
   const len = Math.sqrt(dlat * dlat + dlon * dlon);
-  // Perpendicular unit vector (rotated 90°)
+  // Perpendicular unit vector (rotated 90° clockwise = right side of travel)
   const perpLat = len > 0 ? -dlon / len : 0;
   const perpLon = len > 0 ?  dlat / len : 0;
 
   const points: { lat: number; lon: number }[] = [];
   for (const f of SWEEP_FRACTIONS) {
     const mid = interpolateCoord(from, to, f);
-    // On-line point
-    points.push(mid);
-    // Perpendicular offsets
-    points.push({ lat: mid.lat + perpLat * LATERAL_DEG, lon: mid.lon + perpLon * LATERAL_DEG });
-    points.push({ lat: mid.lat - perpLat * LATERAL_DEG, lon: mid.lon - perpLon * LATERAL_DEG });
+    for (const offset of LATERAL_OFFSETS_DEG) {
+      points.push({
+        lat: mid.lat + perpLat * offset,
+        lon: mid.lon + perpLon * offset,
+      });
+    }
   }
   return points;
 }
