@@ -287,6 +287,37 @@ function interpolateCoord(
 }
 
 /**
+ * Generate sweep points along AND perpendicular to the origin→destination line.
+ * A ±LATERAL_DEG offset (roughly ±450 m) catches Metro stations that sit off
+ * the direct corridor — e.g. Woodley Park or U Street relative to a
+ * Foggy Bottom → Columbia Heights trip.
+ */
+const LATERAL_DEG = 0.004;
+
+function sweepGrid(
+  from: { lat: number; lon: number },
+  to: { lat: number; lon: number }
+): { lat: number; lon: number }[] {
+  const dlat = to.lat - from.lat;
+  const dlon = to.lon - from.lon;
+  const len = Math.sqrt(dlat * dlat + dlon * dlon);
+  // Perpendicular unit vector (rotated 90°)
+  const perpLat = len > 0 ? -dlon / len : 0;
+  const perpLon = len > 0 ?  dlat / len : 0;
+
+  const points: { lat: number; lon: number }[] = [];
+  for (const f of SWEEP_FRACTIONS) {
+    const mid = interpolateCoord(from, to, f);
+    // On-line point
+    points.push(mid);
+    // Perpendicular offsets
+    points.push({ lat: mid.lat + perpLat * LATERAL_DEG, lon: mid.lon + perpLon * LATERAL_DEG });
+    points.push({ lat: mid.lat - perpLat * LATERAL_DEG, lon: mid.lon - perpLon * LATERAL_DEG });
+  }
+  return points;
+}
+
+/**
  * Build a candidate where the rider bikes from their real origin to the point
  * where an intermediate OTP transit itinerary starts, then takes that transit.
  * This produces "bike further to a mid-route station" options — the key
@@ -369,8 +400,11 @@ export interface RoutingOptions {
  * additional transit queries. Each gives OTP a head-start closer to the
  * destination, so it naturally picks a different (further) boarding station —
  * generating the "bike further, fewer Metro stops" candidates the slider needs.
+ *
+ * Using a dense sweep (every ~10%) so that intermediate stations are reliably
+ * hit even when the straight line doesn't pass directly through them.
  */
-const SWEEP_FRACTIONS = [0.25, 0.5, 0.75];
+const SWEEP_FRACTIONS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
 
 export async function fetchCandidates(
   search: JourneySearch
@@ -398,9 +432,7 @@ export async function fetchCandidates(
     },
   });
 
-  const sweepPoints = SWEEP_FRACTIONS.map((f) =>
-    interpolateCoord(origin, destination, f)
-  );
+  const sweepPoints = sweepGrid(origin, destination);
 
   const [bikeResult, transitResult, ...sweepResults] = await Promise.all([
     // 1. Pure bike
@@ -414,9 +446,9 @@ export async function fetchCandidates(
       modes: { direct: ["BICYCLE"] },
     }),
     // 2. Walk+transit from origin (synthesized into bike+transit)
-    queryPlanConnection(transitQueryVars(origin.lat, origin.lon, 8)),
+    queryPlanConnection(transitQueryVars(origin.lat, origin.lon, 10)),
     // 3. Station sweep: transit from intermediate points along the route
-    ...sweepPoints.map((pt) => queryPlanConnection(transitQueryVars(pt.lat, pt.lon, 2))),
+    ...sweepPoints.map((pt) => queryPlanConnection(transitQueryVars(pt.lat, pt.lon, 3))),
   ]);
 
   const candidates: RouteCandidate[] = [];
