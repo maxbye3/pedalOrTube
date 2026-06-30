@@ -5,8 +5,12 @@ import type { RouteCandidate, JourneySearch } from "@/types";
 vi.mock("@/services/RoutingService", () => ({
   fetchCandidates: vi.fn(),
 }));
+vi.mock("@/services/ElevationService", () => ({
+  getElevationProfile: vi.fn(),
+}));
 
 import { fetchCandidates } from "@/services/RoutingService";
+import { getElevationProfile } from "@/services/ElevationService";
 import {
   computeJourney,
   hasLowRouteVariety,
@@ -14,6 +18,7 @@ import {
 } from "@/services/JourneyCalculator";
 
 const mockFetch = vi.mocked(fetchCandidates);
+const mockElevation = vi.mocked(getElevationProfile);
 
 /** Build a RouteCandidate fixture; only the fields the logic reads matter. */
 function candidate(
@@ -87,7 +92,11 @@ describe("hasLowRouteVariety", () => {
 });
 
 describe("computeJourney busNudge", () => {
-  beforeEach(() => mockFetch.mockReset());
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockElevation.mockReset();
+    mockElevation.mockResolvedValue(null);
+  });
 
   it("nudges when slider routes lack variety and bus is off", async () => {
     mockFetch.mockResolvedValue([
@@ -124,5 +133,62 @@ describe("computeJourney busNudge", () => {
     const result = await computeJourney(search(false));
     expect(result.busNudge).toBe(true);
     expect(result.fallbackReason).toBeDefined();
+  });
+
+  it("attaches hill data to the selected bike route", async () => {
+    mockFetch.mockResolvedValue([
+      candidate({
+        id: "a",
+        type: "bike-only",
+        bikePercentage: 100,
+        legs: [
+          {
+            mode: "BICYCLE",
+            from: { name: "Dupont Circle", lat: 38.9096, lon: -77.0434 },
+            to: { name: "National Zoo", lat: 38.9296, lon: -77.0498 },
+            distance: 2400,
+            duration: 600,
+            startTime: 0,
+            endTime: 600000,
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [-77.0434, 38.9096],
+                [-77.0498, 38.9296],
+              ],
+            },
+          },
+        ],
+      }),
+    ]);
+    mockElevation.mockResolvedValue({
+      points: [],
+      totalAscent: 28,
+      totalDescent: 3,
+      maxGradient: 7,
+      steepSegments: [{ startDist: 300, endDist: 700, gradient: 7 }],
+      hillSegments: [
+        {
+          startDist: 300,
+          endDist: 700,
+          gradient: 7,
+          distance: 400,
+          elevationGain: 28,
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [-77.045, 38.914],
+              [-77.047, 38.918],
+            ],
+          },
+        },
+      ],
+    });
+
+    const result = await computeJourney({ ...search(false), bikePreference: 100 });
+
+    expect(result.selected?.elevationGain).toBe(28);
+    expect(result.selected?.legs[0].hillSegments).toHaveLength(1);
+    expect(result.candidates[0].legs[0].hillSegments).toHaveLength(1);
   });
 });

@@ -14,7 +14,16 @@
  */
 import type { RouteCandidate, JourneyResult, JourneySearch } from "@/types";
 import { fetchCandidates } from "@/services/RoutingService";
+import { getElevationProfile } from "@/services/ElevationService";
 import { estimateCalories, estimateCO2Saved } from "@/lib/utils";
+
+function toLineStringCoordinates(
+  coordinates: RouteCandidate["legs"][number]["geometry"]["coordinates"]
+): [number, number][] {
+  return coordinates
+    .filter((coord) => coord.length >= 2)
+    .map((coord) => [coord[0], coord[1]]);
+}
 
 /** Rank candidates by how close their bikePercentage is to the target */
 export function rankCandidates(
@@ -81,6 +90,52 @@ function enrichCandidate(candidate: RouteCandidate): RouteCandidate {
   };
 }
 
+/** Attach per-bike-leg elevation and hill data for the route shown on the map. */
+async function enrichSelectedCandidateWithElevation(
+  candidate: RouteCandidate | null
+): Promise<RouteCandidate | null> {
+  if (!candidate) return null;
+
+  const legs = await Promise.all(
+    candidate.legs.map(async (leg) => {
+      if (leg.mode !== "BICYCLE" || leg.geometry.coordinates.length < 2) {
+        return leg;
+      }
+
+      const coordinates = toLineStringCoordinates(leg.geometry.coordinates);
+      if (coordinates.length < 2) return leg;
+
+      const profile = await getElevationProfile(coordinates);
+      if (!profile) return leg;
+
+      return {
+        ...leg,
+        elevationGain: profile.totalAscent,
+        elevationLoss: profile.totalDescent,
+        maxGradient: profile.maxGradient,
+        hillSegments: profile.hillSegments,
+      };
+    })
+  );
+
+  const bikeLegs = legs.filter((leg) => leg.mode === "BICYCLE");
+  const elevationGain = bikeLegs.reduce(
+    (sum, leg) => sum + (leg.elevationGain ?? 0),
+    0
+  );
+  const elevationLoss = bikeLegs.reduce(
+    (sum, leg) => sum + (leg.elevationLoss ?? 0),
+    0
+  );
+
+  return {
+    ...candidate,
+    legs,
+    elevationGain,
+    elevationLoss,
+  };
+}
+
 /**
  * Run the full journey search. Fetches candidates from OTP, applies
  * discard rules (in RoutingService), and returns the JourneyResult.
@@ -110,11 +165,18 @@ export async function computeJourney(
     busNudge = true;
   }
 
-  const selected = selectCandidate(candidates, search.bikePreference);
+  const selected = await enrichSelectedCandidateWithElevation(
+    selectCandidate(candidates, search.bikePreference)
+  );
+  const candidatesWithSelectedElevation = selected
+    ? candidates.map((candidate) =>
+        candidate.id === selected.id ? selected : candidate
+      )
+    : candidates;
 
   return {
     search,
-    candidates,
+    candidates: candidatesWithSelectedElevation,
     selected,
     fallbackReason,
     busNudge,

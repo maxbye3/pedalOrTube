@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   Bus,
 } from "lucide-react";
-import type { RouteCandidate, RouteLeg } from "@/types";
+import type { HillSegment, RouteCandidate, RouteLeg } from "@/types";
 import {
   formatDuration,
   formatDistance,
@@ -74,15 +74,29 @@ function LegRow({ leg }: { leg: RouteLeg }) {
   const metroColor =
     leg.routeShortName ? METRO_LINE_COLORS[leg.routeShortName] : undefined;
   const color = leg.routeColor ?? metroColor;
+  const steepestHill = leg.hillSegments?.reduce(
+    (steepest, segment) =>
+      !steepest || segment.gradient > steepest.gradient ? segment : steepest,
+    undefined as HillSegment | undefined
+  );
 
   return (
     <div className="flex items-center gap-2.5 text-sm">
       <LegIcon mode={leg.mode} color={color} />
       <div className="flex-1 min-w-0">
         {leg.mode === "BICYCLE" && (
-          <span className="text-gray-700">
-            Bike {formatDistance(leg.distance)} · {formatDuration(leg.duration)}
-          </span>
+          <div className="space-y-0.5">
+            <span className="text-gray-700">
+              Bike {formatDistance(leg.distance)} · {formatDuration(leg.duration)}
+            </span>
+            {steepestHill && (
+              <span className="flex items-center gap-1 text-xs text-red-600">
+                <TrendingUp size={11} />
+                Hill climb: {Math.round(steepestHill.gradient)}% grade for{" "}
+                {formatDistance(steepestHill.distance)}
+              </span>
+            )}
+          </div>
         )}
         {(leg.mode === "SUBWAY" ||
           leg.mode === "RAIL" ||

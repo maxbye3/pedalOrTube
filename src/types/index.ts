@@ -92,6 +92,10 @@ export interface RouteLeg {
   intermediateStops?: TransitStopInfo[];
   transitStopCount?: number; // number of stops boarded/alighted
   realTime?: boolean;
+  elevationGain?: number; // meters
+  elevationLoss?: number; // meters
+  maxGradient?: number; // % grade
+  hillSegments?: HillSegment[];
 }
 
 export interface RouteCandidate {
@@ -163,12 +167,19 @@ export interface ElevationProfile {
   totalDescent: number; // meters
   maxGradient: number; // % grade
   steepSegments: SteepSegment[];
+  hillSegments: HillSegment[];
 }
 
 export interface SteepSegment {
   startDist: number;
   endDist: number;
   gradient: number; // %
+}
+
+export interface HillSegment extends SteepSegment {
+  distance: number; // meters
+  elevationGain: number; // meters
+  geometry: LineString;
 }
 
 // ─── Weather ──────────────────────────────────────────────────────────────────

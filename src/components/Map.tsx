@@ -139,10 +139,12 @@ export default function Map({
       map.getStyle()?.sources
         ? Object.keys(map.getStyle()!.sources)
         : []
-    ).filter((id) => id.startsWith("route-leg-"));
+    ).filter((id) => id.startsWith("route-leg-") || id.startsWith("route-hill-"));
 
     existingSourceIds.forEach((id) => {
       const layerId = `layer-${id}`;
+      const labelLayerId = `label-${id}`;
+      if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId);
       if (map.getLayer(layerId)) map.removeLayer(layerId);
       if (map.getSource(id)) map.removeSource(id);
     });
@@ -183,6 +185,57 @@ export default function Map({
           ...(isDashed ? { "line-dasharray": [2, 2] } : {}),
         },
       });
+
+      if (leg.mode === "BICYCLE") {
+        leg.hillSegments?.forEach((hillSegment, hillIndex) => {
+          if (hillSegment.geometry.coordinates.length < 2) return;
+
+          const hillSourceId = `route-hill-${i}-${hillIndex}`;
+          const hillLayerId = `layer-${hillSourceId}`;
+          const hillLabelLayerId = `label-${hillSourceId}`;
+          map.addSource(hillSourceId, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              geometry: hillSegment.geometry,
+              properties: {
+                label: `${Math.round(hillSegment.gradient)}% climb`,
+              },
+            },
+          });
+
+          map.addLayer({
+            id: hillLayerId,
+            type: "line",
+            source: hillSourceId,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": "#DC2626",
+              "line-width": 7,
+              "line-opacity": 0.85,
+            },
+          });
+
+          map.addLayer({
+            id: hillLabelLayerId,
+            type: "symbol",
+            source: hillSourceId,
+            layout: {
+              "symbol-placement": "line-center",
+              "text-field": ["get", "label"],
+              "text-size": 11,
+              "text-offset": [0, -0.8],
+              "text-allow-overlap": false,
+              "text-ignore-placement": false,
+            },
+            paint: {
+              "text-color": "#991B1B",
+              "text-halo-color": "#FFFFFF",
+              "text-halo-width": 1.5,
+            },
+          });
+        });
+      }
 
       leg.geometry.coordinates.forEach((coord) => {
         allCoords.push([coord[0], coord[1]]);
