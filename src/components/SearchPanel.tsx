@@ -48,11 +48,14 @@ export function SearchPanel({ onJourneyUpdate }: SearchPanelProps) {
 
   const canSearch = !!(origin && destination);
 
-  // Run the search
-  const handleSearch = useCallback(async () => {
+  // Run the search. Pass `allowBus` to override the current toggle state for
+  // this run (used by the Metrobus nudge, whose setAllowBus hasn't applied yet).
+  const handleSearch = useCallback(async (opts?: { allowBus?: boolean }) => {
     if (!origin || !destination) return;
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
+
+    const effectiveAllowBus = opts?.allowBus ?? allowBus;
 
     setState("loading");
     setJourneyResult(null);
@@ -67,7 +70,7 @@ export function SearchPanel({ onJourneyUpdate }: SearchPanelProps) {
           origin,
           destination,
           bikePreference,
-          allowBus: outsideDC ? false : allowBus,
+          allowBus: outsideDC ? false : effectiveAllowBus,
           allowBikeshare: outsideDC ? false : allowBikeshare,
         }),
         signal: abortRef.current.signal,
@@ -210,7 +213,7 @@ export function SearchPanel({ onJourneyUpdate }: SearchPanelProps) {
 
       {/* Search button */}
       <button
-        onClick={handleSearch}
+        onClick={() => handleSearch()}
         disabled={!canSearch || state === "loading"}
         className={cn(
           "w-full py-3 rounded-xl font-semibold text-sm transition-all",
@@ -255,17 +258,19 @@ export function SearchPanel({ onJourneyUpdate }: SearchPanelProps) {
         </div>
       )}
 
-      {/* Fallback message */}
-      {state === "results" && journeyResult?.fallbackReason && (
-        <FallbackMessage
-          reason={journeyResult.fallbackReason}
-          busNudge={journeyResult.busNudge}
-          onEnableBus={() => {
-            setAllowBus(true);
-            setShowAdvanced(true);
-          }}
-        />
-      )}
+      {/* Fallback / low-variety nudge */}
+      {state === "results" &&
+        (journeyResult?.fallbackReason || journeyResult?.busNudge) && (
+          <FallbackMessage
+            reason={journeyResult.fallbackReason}
+            busNudge={journeyResult.busNudge}
+            onEnableBus={() => {
+              setAllowBus(true);
+              setShowAdvanced(true);
+              handleSearch({ allowBus: true });
+            }}
+          />
+        )}
 
       {/* Journey Summary */}
       {state === "results" && selectedCandidate && (

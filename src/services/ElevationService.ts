@@ -4,7 +4,12 @@
  * Fetches elevation profiles from the USGS 3DEP Elevation Point Query Service.
  * Analyzes bike route geometry to compute ascent, descent, and steep segments.
  */
-import type { ElevationProfile, ElevationPoint, SteepSegment } from "@/types";
+import type {
+  ElevationProfile,
+  ElevationPoint,
+  HillSegment,
+  SteepSegment,
+} from "@/types";
 import { haversineDistance } from "@/lib/utils";
 
 const USGS_BASE =
@@ -12,21 +17,62 @@ const USGS_BASE =
 
 const STEEP_GRADE_THRESHOLD = 5; // %
 const STEEP_MIN_DISTANCE = 50; // meters
+const HILL_MIN_GAIN = 5; // meters
 
 /** Sample coordinates along a LineString for elevation queries */
 function sampleCoordinates(
   coords: [number, number][],
   maxSamples = 50
 ): [number, number][] {
-  if (coords.length <= maxSamples) return coords;
-  const step = Math.ceil(coords.length / maxSamples);
+  if (coords.length <= 2) return coords;
+
+  const cumulativeDistances = [0];
+  for (let i = 1; i < coords.length; i++) {
+    const [lon1, lat1] = coords[i - 1];
+    const [lon2, lat2] = coords[i];
+    cumulativeDistances.push(
+      cumulativeDistances[i - 1] + haversineDistance(lat1, lon1, lat2, lon2)
+    );
+  }
+
+  const totalDistance = cumulativeDistances[cumulativeDistances.length - 1];
+  if (totalDistance === 0) return [coords[0], coords[coords.length - 1]];
+
+  const sampleCount = Math.min(maxSamples, Math.max(2, Math.ceil(totalDistance / 100) + 1));
   const sampled: [number, number][] = [];
-  for (let i = 0; i < coords.length; i += step) {
-    sampled.push(coords[i]);
+
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+    const targetDistance =
+      (totalDistance * sampleIndex) / Math.max(sampleCount - 1, 1);
+    const segmentIndex = cumulativeDistances.findIndex(
+      (distance) => distance >= targetDistance
+    );
+
+    if (segmentIndex === -1) {
+      sampled.push(coords[coords.length - 1]);
+      continue;
+    }
+
+    if (segmentIndex <= 0) {
+      sampled.push(coords[0]);
+      continue;
+    }
+
+    const prevDistance = cumulativeDistances[segmentIndex - 1];
+    const nextDistance = cumulativeDistances[segmentIndex];
+    const fraction =
+      nextDistance > prevDistance
+        ? (targetDistance - prevDistance) / (nextDistance - prevDistance)
+        : 0;
+    const [prevLon, prevLat] = coords[segmentIndex - 1];
+    const [nextLon, nextLat] = coords[segmentIndex];
+
+    sampled.push([
+      prevLon + (nextLon - prevLon) * fraction,
+      prevLat + (nextLat - prevLat) * fraction,
+    ]);
   }
-  if (sampled[sampled.length - 1] !== coords[coords.length - 1]) {
-    sampled.push(coords[coords.length - 1]);
-  }
+
   return sampled;
 }
 
@@ -78,6 +124,7 @@ export async function getElevationProfile(
   let totalDescent = 0;
   let maxGradient = 0;
   const steepSegments: SteepSegment[] = [];
+  const hillSegments: HillSegment[] = [];
 
   for (let i = 1; i < points.length; i++) {
     const dElev = points[i].elevation - points[i - 1].elevation;
@@ -94,11 +141,24 @@ export async function getElevationProfile(
         Math.abs(grade) >= STEEP_GRADE_THRESHOLD &&
         dDist >= STEEP_MIN_DISTANCE
       ) {
-        steepSegments.push({
+        const steepSegment: SteepSegment = {
           startDist: points[i - 1].distance,
           endDist: points[i].distance,
           gradient: grade,
-        });
+        };
+        steepSegments.push(steepSegment);
+
+        if (grade > 0 && dElev >= HILL_MIN_GAIN) {
+          hillSegments.push({
+            ...steepSegment,
+            distance: dDist,
+            elevationGain: dElev,
+            geometry: {
+              type: "LineString",
+              coordinates: [sampled[i - 1], sampled[i]],
+            },
+          });
+        }
       }
     }
   }
@@ -109,5 +169,6 @@ export async function getElevationProfile(
     totalDescent,
     maxGradient,
     steepSegments,
+    hillSegments,
   };
 }

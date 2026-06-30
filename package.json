@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run"
   },
   "dependencies": {
     "@maplibre/maplibre-gl-geocoder": "^1.9.4",
@@ -28,5 +29,8 @@
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
   }
 }

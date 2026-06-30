@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   Bus,
 } from "lucide-react";
-import type { RouteCandidate, RouteLeg } from "@/types";
+import type { HillSegment, RouteCandidate, RouteLeg } from "@/types";
 import {
   formatDuration,
   formatDistance,
@@ -74,15 +74,29 @@ function LegRow({ leg }: { leg: RouteLeg }) {
   const metroColor =
     leg.routeShortName ? METRO_LINE_COLORS[leg.routeShortName] : undefined;
   const color = leg.routeColor ?? metroColor;
+  const steepestHill = leg.hillSegments?.reduce(
+    (steepest, segment) =>
+      !steepest || segment.gradient > steepest.gradient ? segment : steepest,
+    undefined as HillSegment | undefined
+  );
 
   return (
     <div className="flex items-center gap-2.5 text-sm">
       <LegIcon mode={leg.mode} color={color} />
       <div className="flex-1 min-w-0">
         {leg.mode === "BICYCLE" && (
-          <span className="text-gray-700">
-            Bike {formatDistance(leg.distance)} · {formatDuration(leg.duration)}
-          </span>
+          <div className="space-y-0.5">
+            <span className="text-gray-700">
+              Bike {formatDistance(leg.distance)} · {formatDuration(leg.duration)}
+            </span>
+            {steepestHill && (
+              <span className="flex items-center gap-1 text-xs text-red-600">
+                <TrendingUp size={11} />
+                Hill climb: {Math.round(steepestHill.gradient)}% grade for{" "}
+                {formatDistance(steepestHill.distance)}
+              </span>
+            )}
+          </div>
         )}
         {(leg.mode === "SUBWAY" ||
           leg.mode === "RAIL" ||
@@ -318,12 +332,16 @@ function StatCell({
 
 // ─── Fallback message ─────────────────────────────────────────────────────────
 
+/** Shown above the Metrobus nudge when routes are too similar for the slider. */
+const VARIETY_NUDGE_MESSAGE =
+  "These routes are all pretty similar, so the Bike Preference slider won't change much.";
+
 export function FallbackMessage({
   reason,
   busNudge,
   onEnableBus,
 }: {
-  reason: string;
+  reason?: string;
   busNudge?: boolean;
   onEnableBus?: () => void;
 }) {
@@ -331,7 +349,7 @@ export function FallbackMessage({
     <div className="flex gap-2.5 items-start bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm text-amber-800">
       <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-500" />
       <div>
-        <p>{reason}</p>
+        <p>{reason ?? VARIETY_NUDGE_MESSAGE}</p>
         {busNudge && onEnableBus && (
           <button
             onClick={onEnableBus}
